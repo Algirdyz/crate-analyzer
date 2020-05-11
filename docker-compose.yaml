@@ -1,0 +1,12 @@
+
+version: '3.2'
+services:
+  analyzer:
+    image: crate_analyzer:latest
+    volumes:
+    - type: bind
+      source: /data/praezi_algirdas/data/praezi.db
+      target: /praezi.db
+    - type: bind
+      source: /data/praezi/batch/data/
+      target: /data/praezi/batch/data/
