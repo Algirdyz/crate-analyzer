@@ -44,7 +44,9 @@ pub struct DepMetric {
     pub crate_name: String,
     pub crate_version: String,
     pub usedCount: usize,
-    pub totalCount: usize
+    pub totalCount: usize,
+    pub total_loc: usize,
+    pub used_loc: usize
 }
 
 pub struct Metrics {
@@ -55,6 +57,9 @@ pub struct Metrics {
     pub UsedDepFuncCount: usize,
     pub TotalDepPublicFuncCount: usize,
     pub UsedDepPublicFuncCount: usize,
+    pub TotalDepLOC: usize,
+    pub TotalLOC: usize,
+    pub TotalStdLOC: usize,
     pub depMetrics: Vec<DepMetric> 
 }
 
@@ -79,6 +84,9 @@ pub fn get_index(callgraph_directory: &PathBuf, crate_name: &String, crate_versi
         UsedDepFuncCount: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string())).count(),
         TotalDepPublicFuncCount: graph.iter().filter(|n| n.package_name != None && &n.crate_name != crate_name && n.is_externally_visible).count(),
         UsedDepPublicFuncCount: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string()) && n.is_externally_visible).count(),
+        TotalDepLOC: graph.iter().filter(|n| n.package_name != None && &n.crate_name != crate_name).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
+        TotalLOC: graph.iter().map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
+        TotalStdLOC: graph.iter().filter(|n| n.package_name == None).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         depMetrics: Vec::new()
     };
     // let total_count = graph.iter().count();
@@ -105,13 +113,17 @@ pub fn get_index(callgraph_directory: &PathBuf, crate_name: &String, crate_versi
         let dep_graph = analyze_graph_for_package2(&callgraph_path, &n.0, crate_name, &tr_deps);
         let total = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).count();
         let total_used = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).count();
+        let total_loc = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
+        let used_loc = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
         
         output.depMetrics.push(
             DepMetric{
                 crate_name: (&n.0).to_string(),
                 crate_version: (&n.1).to_string(),
                 totalCount: total,
-                usedCount: total_used
+                usedCount: total_used,
+                total_loc: total_loc,
+                used_loc: used_loc
             }
         )
         // println!("{}  = {}/{}", &n.0, total_used, total);

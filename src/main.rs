@@ -6,12 +6,24 @@ use sqlite_handler::SqliteHandler;
 use std::fs;
 use semver::{Version};
 use std::path::PathBuf;
+use std::env;
 
 fn main() {
-    let db_handler = SqliteHandler::new();
+    let args: Vec<String> = env::args().collect();
+    let database_path = match args.get(1) {
+        None => {
+            "/database/prazi.db"
+        },
+        Some(v) => {
+            v
+        }
+    };
+    let db_handler = SqliteHandler::new(database_path);
     let mut counter = 0;
-    let total_paths = fs::read_dir("/data/praezi/batch/data/").unwrap().count();
-    let paths = fs::read_dir("/data/praezi/batch/data/").unwrap();
+    let data_path = "/data/praezi/batch/data/";
+    println!("Processing data in {}", data_path);
+    let total_paths = fs::read_dir(data_path).unwrap().count();
+    let paths = fs::read_dir(data_path).unwrap();
     for path in paths {
         let pather = path.unwrap();
         match fs::read_dir(pather.path()){
@@ -36,7 +48,11 @@ fn main() {
                 if !highest_ver_str.is_empty() {
                     let crate_name = pather.path().file_name().unwrap().to_string_lossy().to_string();
                     match get_index(&highest_path, &crate_name, &highest_ver_str){
+                        // Err(ref e) if e. == std::io::ErrorKind::NotFound => {
+                            
+                        // },
                         Err(why) => {
+                            db_handler.insert_error(format!("{:?}", why), &crate_name, &highest_ver_str);
                             println!("Failed for {:?}", why);
                         },
                         Ok(val) => {

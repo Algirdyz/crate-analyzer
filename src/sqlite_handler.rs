@@ -35,8 +35,10 @@ pub struct SqliteHandler{
 }
 
 impl SqliteHandler{
-    pub fn new() -> Self {
-        let conn = Connection::open("/database/prazi.db").unwrap();
+    pub fn new(database: &str) -> Self {
+        let conn = Connection::open(database).unwrap();
+        // let conn = Connection::open("/database/prazi.db").unwrap();
+        // let conn = Connection::open("prazi.db").unwrap();
         conn.execute(
             "CREATE TABLE IF NOT EXISTS metrics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +48,12 @@ impl SqliteHandler{
                 local_func_count INT,
                 std_func_count INT,
                 total_dep_func_count INT,
-                used_dep_func_count INT
+                used_dep_func_count INT,
+                total_dep_public_func_count INT,
+                used_dep_public_func_count INT,
+                total_LOC INT,
+                total_dep_LOC INT,
+                total_std_LOC INT
             )",
             NO_PARAMS,
         ).unwrap();
@@ -57,8 +64,20 @@ impl SqliteHandler{
                 version VARCHAR(100) NOT NULL,
                 total_count INT NOT NULL,
                 used_count INT NOT NULL,
+                total_LOC INT NOT NULL,
+                used_LOC INT NOT NULL,
                 crate_id INT NOT NULL,
                 FOREIGN KEY(crate_id) REFERENCES metrics(id)
+            )",
+            NO_PARAMS,
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS metric_errors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name VARCHAR(100) NOT NULL,
+                version VARCHAR(100) NOT NULL,
+                error VARCHAR(256) NOT NULL
             )",
             NO_PARAMS,
         ).unwrap();
@@ -66,17 +85,51 @@ impl SqliteHandler{
         SqliteHandler { conn : conn }
     }
 
+    pub fn insert_error(&self, error: String, crate_name: &String, crate_version: &String){
+        let result = self.conn.execute(
+            "INSERT INTO metric_errors (
+                name, 
+                version, 
+                error)
+                VALUES(?1, ?2, ?3)",
+            params![crate_name,
+                crate_version,
+                error]
+        );
+        match result {
+            Err(why) => println!("{:?}", why),
+            Ok(_val) => return
+        }
+    }
+    
     pub fn insert_metric(&self, metrics: &Metrics, crate_name: &String, crate_version: &String){
         let result = self.conn.execute(
-            "INSERT INTO metrics (crate_name, crate_version, total_func_count, local_func_count, std_func_count, total_dep_func_count, used_dep_func_count) 
-                VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO metrics (
+                crate_name, 
+                crate_version, 
+                total_func_count, 
+                local_func_count, 
+                std_func_count, 
+                total_dep_func_count, 
+                used_dep_func_count,
+                total_dep_public_func_count,
+                used_dep_public_func_count,
+                total_LOC,
+                total_dep_LOC,
+                total_std_LOC) 
+                VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![crate_name,
                 crate_version,
                 metrics.TotalFuncCount as u32,
                 metrics.LocalFuncCount as u32,
                 metrics.StdFuncCount as u32,
                 metrics.TotalDepFuncCount as u32,
-                metrics.UsedDepFuncCount as u32]
+                metrics.UsedDepFuncCount as u32,
+                metrics.TotalDepPublicFuncCount as u32,
+                metrics.UsedDepPublicFuncCount as u32,
+                metrics.TotalLOC as u32,
+                metrics.TotalDepLOC as u32,
+                metrics.TotalStdLOC as u32]
         );
         match result {
             Err(why) => println!("{:?}", why),
@@ -84,11 +137,13 @@ impl SqliteHandler{
                 let id = self.conn.last_insert_rowid();
                 for dep_metric in &metrics.depMetrics{
                     let res = self.conn.execute(
-                        "INSERT INTO dep_metrics (name, version, total_count, used_count, crate_id) VALUES(?1, ?2, ?3, ?4, ?5)",
+                        "INSERT INTO dep_metrics (name, version, total_count, used_count, total_LOC, used_LOC, crate_id) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                         params![&dep_metric.crate_name,
                             dep_metric.crate_version,
                             dep_metric.totalCount as u32,
                             dep_metric.usedCount as u32,
+                            dep_metric.total_loc as u32,
+                            dep_metric.used_loc as u32,
                             id]
                     );
                     match res {
