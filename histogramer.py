@@ -191,6 +191,64 @@ def graph_utilization_index(conn):
     plt.savefig("graphs/util.png")
     plt.close()
 
+def graph_leanness_loc(conn):
+    cur = conn.cursor()
+    cur.execute(f"SELECT \
+        crate_name, \
+        crate_version, \
+        total_dep_func_count, \
+        used_dep_func_count, \
+        total_dep_loc, \
+        used_dep_LOC  \
+        FROM metrics")
+
+    rows = cur.fetchall()
+
+    dataset_node = []
+    dataset_LOC = []
+    dataset = []
+    for row in rows:
+        nodes = 0
+        loc = 0
+        if row[2] > 0 and row[3] > 0:
+            nodes = row[3] / row[2]
+            dataset_node.append(nodes)
+        if row[4] > 0 and row[5] > 0:
+            loc = row[5] / row[4]
+            dataset_LOC.append(loc)
+
+
+        if dataset_LOC != 0 or dataset_node != 0:
+            dataset.append(nodes - loc)
+    
+    sns.distplot(dataset)
+    plt.xlabel('Leanness', fontsize=16)
+    plt.ylabel('Share of crates', fontsize=16)    
+    plt.savefig("graphs/loc_diff.png")
+    plt.close()
+
+    absd = absolute(dataset)
+    sns.distplot(absd)
+    plt.xlabel('Absolute difference', fontsize=16)
+    plt.ylabel('Share of crates', fontsize=16)    
+    plt.savefig("graphs/loc_diff_abs.png")
+    plt.close()
+
+    md = median(dataset_LOC)
+    mn = mean(dataset_LOC)
+    st = std(dataset_LOC)
+    print(f"LOC Lean median {md}")
+    print(f"LOC Lean mean {mn}")
+    print(f"LOC Lean std {st}")
+
+    sns.distplot(dataset_node, label='Leanness nodes')
+    sns.distplot(dataset_LOC, label='Leanness LOC')
+    plt.xlabel('Leanness index', fontsize=16)
+    plt.ylabel('Share of crates', fontsize=16)
+    plt.legend(loc="upper right")
+    plt.savefig("graphs/loc_comp.png")
+    plt.close()
+
 def main():
     database = r"prazi.db"
 
@@ -201,7 +259,7 @@ def main():
         graph_leanness(conn)
         graph_differences(conn)
         graph_utilization_index(conn)
-
+        graph_leanness_loc(conn)
 
 if __name__ == '__main__':
     main()

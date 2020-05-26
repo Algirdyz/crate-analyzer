@@ -52,8 +52,12 @@ impl SqliteHandler{
                 total_dep_public_func_count INT,
                 used_dep_public_func_count INT,
                 total_LOC INT,
+                local_LOC INT,
                 total_dep_LOC INT,
-                total_std_LOC INT
+                used_dep_LOC INT,
+                total_std_LOC INT,
+                total_public_LOC INT,
+                used_public_LOC INT
             )",
             NO_PARAMS,
         ).unwrap();
@@ -115,9 +119,13 @@ impl SqliteHandler{
                 total_dep_public_func_count,
                 used_dep_public_func_count,
                 total_LOC,
+                local_LOC,
                 total_dep_LOC,
-                total_std_LOC) 
-                VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                used_dep_LOC,
+                total_std_LOC,
+                total_public_LOC,
+                used_public_LOC) 
+                VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![crate_name,
                 crate_version,
                 metrics.TotalFuncCount as u32,
@@ -128,8 +136,12 @@ impl SqliteHandler{
                 metrics.TotalDepPublicFuncCount as u32,
                 metrics.UsedDepPublicFuncCount as u32,
                 metrics.TotalLOC as u32,
+                metrics.LocalLOC as u32,
                 metrics.TotalDepLOC as u32,
-                metrics.TotalStdLOC as u32]
+                metrics.UsedDepLOC as u32,
+                metrics.TotalStdLOC as u32,
+                metrics.TotalDepPublicLOC as u32,
+                metrics.UsedDepPublicLOC as u32]
         );
         match result {
             Err(why) => println!("{:?}", why),

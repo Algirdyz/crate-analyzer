@@ -58,8 +58,12 @@ pub struct Metrics {
     pub TotalDepPublicFuncCount: usize,
     pub UsedDepPublicFuncCount: usize,
     pub TotalDepLOC: usize,
+    pub UsedDepLOC: usize,
     pub TotalLOC: usize,
+    pub LocalLOC: usize,
     pub TotalStdLOC: usize,
+    pub TotalDepPublicLOC: usize,
+    pub UsedDepPublicLOC: usize,
     pub depMetrics: Vec<DepMetric> 
 }
 
@@ -70,10 +74,10 @@ pub struct Metrics {
 //     pub nodes_info: Vec<NodeInfo>
 // }
 
-pub fn get_index(callgraph_directory: &PathBuf, crate_name: &String, crate_version: &String) -> Result<Metrics>{
+pub fn get_index(callgraph_directory: &PathBuf, update_callgraph_directory: &PathBuf, crate_name: &String, crate_version: &String) -> Result<Metrics>{
     let deps = get_deps(&callgraph_directory, crate_name, Version::parse(crate_version).unwrap())?;
 
-    let callgraph_path = update_with_python(callgraph_directory)?;    
+    let callgraph_path = update_with_python(callgraph_directory, update_callgraph_directory)?;    
     let graph = analyze_graph_for_package(&callgraph_path, crate_name)?;
 
     let mut output = Metrics{
@@ -85,8 +89,12 @@ pub fn get_index(callgraph_directory: &PathBuf, crate_name: &String, crate_versi
         TotalDepPublicFuncCount: graph.iter().filter(|n| n.package_name != None && &n.crate_name != crate_name && n.is_externally_visible).count(),
         UsedDepPublicFuncCount: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string()) && n.is_externally_visible).count(),
         TotalDepLOC: graph.iter().filter(|n| n.package_name != None && &n.crate_name != crate_name).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
+        UsedDepLOC: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         TotalLOC: graph.iter().map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
+        LocalLOC: graph.iter().filter(|n| n.node_type == Some("local_func".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         TotalStdLOC: graph.iter().filter(|n| n.package_name == None).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
+        TotalDepPublicLOC: graph.iter().filter(|n| n.package_name != None && &n.crate_name != crate_name && n.is_externally_visible).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
+        UsedDepPublicLOC: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string()) && n.is_externally_visible).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         depMetrics: Vec::new()
     };
     // let total_count = graph.iter().count();
@@ -247,8 +255,8 @@ fn traverse_node_downwards(graph: &mut Vec<Node>, node_index: usize, package_nam
 }
 
 
-fn update_with_python(path: &PathBuf) -> Result<PathBuf>{
-    let res_path = path.join("updated_callgraph.json");
+fn update_with_python(path: &PathBuf, update_path: &PathBuf) -> Result<PathBuf>{
+    let res_path = update_path.join("updated_callgraph.json");
     if res_path.exists() {
         return Ok(res_path)
     }
@@ -256,6 +264,7 @@ fn update_with_python(path: &PathBuf) -> Result<PathBuf>{
     let output = Command::new("python3")
         .arg("grapher.py")
         .arg(path)
+        .arg(update_path)
         .output()?;
     
     if output.status.success() {

@@ -21,6 +21,7 @@ fn main() {
     let db_handler = SqliteHandler::new(database_path);
     let mut counter = 0;
     let data_path = "/data/praezi/batch/data/";
+    let updated_data_path = "/data/praezi_algirdas/datasets/";
     println!("Processing data in {}", data_path);
     let total_paths = fs::read_dir(data_path).unwrap().count();
     let paths = fs::read_dir(data_path).unwrap();
@@ -28,10 +29,11 @@ fn main() {
         let pather = path.unwrap();
         match fs::read_dir(pather.path()){
             Err(why) => {
-                println!("{:?}", why);
+                println!("Failed reading versions in {:?} - {:?}", pather, why);
             },
             Ok(versions) => {
                 let mut highest_version = Version::parse(&"0.0.0").unwrap();
+                let mut highest_update_path = PathBuf::from(updated_data_path);
                 let mut highest_path = PathBuf::new();
                 let mut highest_ver_str = String::new();
                 for version_folder in versions{
@@ -47,7 +49,8 @@ fn main() {
 
                 if !highest_ver_str.is_empty() {
                     let crate_name = pather.path().file_name().unwrap().to_string_lossy().to_string();
-                    match get_index(&highest_path, &crate_name, &highest_ver_str){
+                    highest_update_path = highest_update_path.join(updated_data_path).join(&crate_name).join(&highest_ver_str);
+                    match get_index(&highest_path, &highest_update_path, &crate_name, &highest_ver_str){
                         // Err(ref e) if e. == std::io::ErrorKind::NotFound => {
                             
                         // },

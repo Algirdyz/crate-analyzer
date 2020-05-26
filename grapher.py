@@ -1,11 +1,12 @@
 import json
 import sys
-
+import os
 
 new_graph = []
 grouped_outward_edges = {}
 grouped_inward_edges = {}
 path = sys.argv[1]
+updated_root_path = sys.argv[2]
 
 initial_path = path + "/callgraph.json"
 with open(initial_path) as json_file:
@@ -49,6 +50,11 @@ with open(initial_path) as json_file:
 
         new_graph.append(node)
 
-updated_path = path + "/updated_callgraph.json"
+
+updated_path = updated_root_path + "/updated_callgraph.json"
+if not os.path.exists(os.path.dirname(updated_path)):
+    os.makedirs(os.path.dirname(updated_path))
+
+
 with open(updated_path, 'w') as outfile:
     json.dump(new_graph, outfile)
