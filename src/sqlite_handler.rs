@@ -77,6 +77,26 @@ impl SqliteHandler{
         ).unwrap();
 
         conn.execute(
+            "CREATE TABLE IF NOT EXISTS dep (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name VARCHAR(100) NOT NULL,
+                version VARCHAR(100) NOT NULL
+            )",
+            NO_PARAMS,
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS dep_func_metrics (
+                func TEXT NOT NULL,
+                use_count INT NOT NULL,
+                dep_id INT NOT NULL,
+                FOREIGN KEY(dep_id) REFERENCES dep(id),
+                UNIQUE(func, dep_id)
+            );",
+            NO_PARAMS,
+        ).unwrap();
+
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS metric_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name VARCHAR(100) NOT NULL,
@@ -87,6 +107,89 @@ impl SqliteHandler{
         ).unwrap();
 
         SqliteHandler { conn : conn }
+    }
+
+    pub fn get_dep_id(&self, name: &String, version: &String) -> i64{
+        let sql = "SELECT id FROM dep WHERE name = ?1 AND version = ?2";
+        match self.conn.query_row(sql, 
+            params![
+                name,
+                version
+            ], |row| {
+                let state: i64 = row.get(0).unwrap();
+                return Ok(state)
+            }){
+            Err(_why) => {
+                let result = self.conn.execute(
+                    "INSERT INTO dep (
+                        name, 
+                        version)
+                        VALUES(?1, ?2)",
+                    params![name,
+                        version]
+                );
+                match result {
+                    Err(why2) => {
+                        println!("{:?}", why2);
+                        return 0
+                    },
+                    Ok(_val) => {
+                        return self.conn.last_insert_rowid();
+                    }
+                }
+            }
+            Ok(v) => return v
+        }
+    }
+
+    pub fn insert_unused_func(&self, id: &i64, func_name: &String){
+        let result = self.conn.execute(
+            "INSERT INTO dep_func_metrics (
+                dep_id, 
+                func, 
+                use_count)
+                VALUES(?1, ?2, 0)",
+            params![id,
+                func_name]
+        );
+        match result {
+            Err(_why) => return,
+            Ok(_val) => return
+        }
+    }
+
+    pub fn update_or_insert_func(&self, id: &i64, func_name: &String){
+        let result = self.conn.execute(
+            "UPDATE dep_func_metrics 
+            SET 
+                use_count = use_count + 1
+            WHERE
+                dep_id = ?1 AND func = ?2",
+            params![id, 
+                func_name]
+        );
+        match result {
+            Err(why) => {
+                println!("{:?}", why)
+            },
+            Ok(val) => {
+                if val == 0 {
+                    let result = self.conn.execute(
+                        "INSERT INTO dep_func_metrics (
+                            dep_id, 
+                            func, 
+                            use_count)
+                            VALUES(?1, ?2, 1)",
+                        params![id,
+                            func_name]
+                    );
+                    match result {
+                        Err(why) => println!("{:?}", why),
+                        Ok(_val) => return
+                    }
+                }
+            }
+        }
     }
 
     pub fn insert_error(&self, error: String, crate_name: &String, crate_version: &String){
@@ -147,22 +250,16 @@ impl SqliteHandler{
             Err(why) => println!("{:?}", why),
             Ok(_) => {
                 let id = self.conn.last_insert_rowid();
-                for dep_metric in &metrics.depMetrics{
-                    let res = self.conn.execute(
-                        "INSERT INTO dep_metrics (name, version, total_count, used_count, total_LOC, used_LOC, crate_id) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                        params![&dep_metric.crate_name,
-                            dep_metric.crate_version,
-                            dep_metric.totalCount as u32,
-                            dep_metric.usedCount as u32,
-                            dep_metric.total_loc as u32,
-                            dep_metric.used_loc as u32,
-                            id]
-                    );
-                    match res {
-                        Err(why) => {
-                            println!("{:?}", why);
-                        },
-                        Ok(_) => ()
+                for funcs in &metrics.used_funcs{
+                    let dep_id = self.get_dep_id(&funcs.0, &funcs.1);
+                    for func in &funcs.2{
+                        self.update_or_insert_func(&dep_id, func)
+                    }
+                }
+                for funcs in &metrics.unused_funcs{
+                    let dep_id = self.get_dep_id(&funcs.0, &funcs.1);
+                    for func in &funcs.2{
+                        self.insert_unused_func(&dep_id, func)
                     }
                 }
             }

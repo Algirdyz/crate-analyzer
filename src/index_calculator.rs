@@ -64,7 +64,8 @@ pub struct Metrics {
     pub TotalStdLOC: usize,
     pub TotalDepPublicLOC: usize,
     pub UsedDepPublicLOC: usize,
-    pub depMetrics: Vec<DepMetric> 
+    pub used_funcs: Vec<(String, String, Vec<String>)>,
+    pub unused_funcs: Vec<(String, String, Vec<String>)>
 }
 
 // #[derive(Deserialize, Serialize, Clone)]
@@ -95,7 +96,8 @@ pub fn get_index(callgraph_directory: &PathBuf, update_callgraph_directory: &Pat
         TotalStdLOC: graph.iter().filter(|n| n.package_name == None).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         TotalDepPublicLOC: graph.iter().filter(|n| n.package_name != None && &n.crate_name != crate_name && n.is_externally_visible).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         UsedDepPublicLOC: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string()) && n.is_externally_visible).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
-        depMetrics: Vec::new()
+        used_funcs: Vec::new(),
+        unused_funcs: Vec::new()
     };
     // let total_count = graph.iter().count();
     // let total_non_std = graph.iter().filter(|n| n.package_name != None).count();
@@ -119,21 +121,32 @@ pub fn get_index(callgraph_directory: &PathBuf, update_callgraph_directory: &Pat
     for n in deps{
         let tr_deps = get_all_deps(&callgraph_directory, &n.0, Version::parse(&n.1).unwrap())?;
         let dep_graph = analyze_graph_for_package2(&callgraph_path, &n.0, crate_name, &tr_deps);
-        let total = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).count();
-        let total_used = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).count();
-        let total_loc = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
-        let used_loc = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
+
+        let used_nodes: Vec<String> = dep_graph.iter()
+            .filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string()))
+            .map(|n| n.relative_def_id.to_string()).collect();
+        let unused_nodes: Vec<String> = dep_graph.iter()
+            .filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string()) && n.node_type != Some("local_func_pub".to_string()) && n.node_type != Some("used_dep_func_pub".to_string()))
+            .map(|n| n.relative_def_id.to_string()).collect();
         
-        output.depMetrics.push(
-            DepMetric{
-                crate_name: (&n.0).to_string(),
-                crate_version: (&n.1).to_string(),
-                totalCount: total,
-                usedCount: total_used,
-                total_loc: total_loc,
-                used_loc: used_loc
-            }
-        )
+        // let total = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).count();
+        // let total_used = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).count();
+        // let total_loc = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
+        // let used_loc = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
+        
+        output.used_funcs.push((n.0.to_string(), n.1.to_string(), used_nodes));
+        output.unused_funcs.push((n.0, n.1, unused_nodes));
+
+        // output.depMetrics.push(
+        //     DepMetric{
+        //         crate_name: (&n.0).to_string(),
+        //         crate_version: (&n.1).to_string(),
+        //         totalCount: total,
+        //         usedCount: total_used,
+        //         total_loc: total_loc,
+        //         used_loc: used_loc
+        //     }
+        // )
         // println!("{}  = {}/{}", &n.0, total_used, total);
     }
 

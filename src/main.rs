@@ -19,6 +19,7 @@ fn main() {
         }
     };
     let db_handler = SqliteHandler::new(database_path);
+
     let mut counter = 0;
     let data_path = "/data/praezi/batch/data/";
     let updated_data_path = "/data/praezi_algirdas/datasets/";
