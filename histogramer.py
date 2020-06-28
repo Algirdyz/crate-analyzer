@@ -8,6 +8,7 @@ from scipy.stats import norm
 import seaborn as sns
 import scipy
 from dictances import bhattacharyya
+import json
 
 
 def create_connection(db_file):
@@ -52,10 +53,6 @@ def graph_leanness(conn):
             elif row[3]/row[2] < 0.01:
                 non_zero_low += 1
     
-
-
-    # print(f"zero - {zero_counter}")
-    # print(f"zero - {non_zero_low}")
     md = median(dataset)
     mn = mean(dataset)
     st = std(dataset)
@@ -197,23 +194,41 @@ def graph_differences(conn):
 def new_util_index(conn):
     cur = conn.cursor()
     cur.execute(f"SELECT \
-        id \
+        id, \
+        name, \
+        version \
         FROM dep")
 
     rows = cur.fetchall()
-    dep_ids = []
+    deps = {}
     for row in rows:
-        dep_ids.append(row[0])
-
-    for i in dep_ids:
+        deps[row[0]] = {
+            "name": row[1],
+            "version": row[2]
+        }
+    
+    for key in deps:
         sql2 = conn.cursor()
-        print(f"Getting index for {i}")
         sql2.execute(f"SELECT \
             count(*) \
             FROM dep_func_metrics \
-            where dep_id = {i} and use_count = 0")        
+            where dep_id = {key} and use_count=0")        
         zeroUseFuncs = sql2.fetchall()
-        print(f"Dep {i} has {zeroUseFuncs} unused funcs")
+
+        sql3 = conn.cursor()
+        sql3.execute(f"SELECT \
+            count(*) \
+            FROM dep_func_metrics \
+            where dep_id = {key} and use_count>0")        
+        used_funcs = sql2.fetchall()
+
+        deps[key]["unused"] = zeroUseFuncs
+        deps[key]["used"] = used_funcs
+        print(f"Dep {deps[key]['name']} has {zeroUseFuncs} unused funcs")
+
+    with open('data.json', 'w') as outfile:
+        json.dump(deps, outfile)
+
 
 def graph_utilization_index(conn):
     cur = conn.cursor()
@@ -436,6 +451,11 @@ def main():
         # graph_utilization_index(conn)
         # graph_leanness_loc(conn)
         new_util_index(conn)
+
+        # cur = conn.cursor()
+        # cur.execute(f"PRAGMA index_list(dep_func_metrics);")
+        # rows = cur.fetchall()
+        # print(rows)
 
 if __name__ == '__main__':
     main()
