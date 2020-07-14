@@ -9,7 +9,7 @@ import seaborn as sns
 import scipy
 from dictances import bhattacharyya
 import json
-
+import pandas as pd
 
 def create_connection(db_file):
     """ create a database connection to the SQLite database
@@ -35,10 +35,8 @@ def graph_leanness(conn):
     :return:
     """
     cur = conn.cursor()
-    cur.execute("SELECT crate_name, crate_version, total_dep_func_count, used_dep_func_count, COUNT(dep_metrics.crate_id) as dep_count \
-        FROM metrics \
-        INNER JOIN dep_metrics ON metrics.id = dep_metrics.crate_id \
-        group by metrics.id")
+    cur.execute("SELECT crate_name, crate_version, total_dep_func_count, used_dep_func_count \
+        FROM metrics ")
 
     rows = cur.fetchall()
 
@@ -52,20 +50,13 @@ def graph_leanness(conn):
                 zero_counter += 1
             elif row[3]/row[2] < 0.01:
                 non_zero_low += 1
-    
+
     md = median(dataset)
     mn = mean(dataset)
     st = std(dataset)
     print(f"Lean median {md}")
     print(f"Lean mean {mn}")
     print(f"Lean std {st}")
-
-
-    # for row in rows:
-    #     if row[2] > 0 and row[3] > 0 and row[4] > 5 and row[4] < 10:
-    #         if isclose(row[3] / row[2], md):
-    #             print(f"Median package is {row[0]}-{row[1]}. Dep count - {row[4]}")
-                
 
     sns.distplot(dataset)
     plt.xlabel('Leanness index', fontsize=16)
@@ -90,7 +81,7 @@ def graph_dependency(conn):
     dataset_non_zero_mean = []
     for row in rows:
         if row[3] > 0:
-            dataset.append(row[2]/ row[3])
+            dataset.append(row[2] / row[3])
             if row[2] > 0:
                 dataset_non_zero_mean.append(row[2]/ row[3])
     
@@ -103,12 +94,30 @@ def graph_dependency(conn):
     zeroes = len([i for i in dataset if i == 0])
     print(f"0 LOC in dependencies -  {zeroes / len(dataset)}")
 
+    print(f"Comp analysis. Total  - {len(dataset)}")
+    print(f"Comp analysis. Middle - {len([i for i in dataset if i > 0 and i < 0.9])}")
+    print(f"Comp analysis. Top    - {len([i for i in dataset if i >= 0.9])}")
+    print(f"Comp analysis. Bottom - {len([i for i in dataset if i == 0])}")
+
     a = np.array(dataset)
     print(f"95th percentile of dependency index  - {np.percentile(a, 95)}")
 
+    # plt.figure(num=None, figsize=(12, 6), dpi=80)
+    # plt.subplot(1, 2, 1)
+    # sns.boxplot(data = [i for i in dataset if i > 0])
+    # # sns.distplot(dataset)
+    # plt.xlabel('Software Composition Index', fontsize=16)
+    plt.ylabel('Share of crates (log scale)', fontsize=16)
+    # plt.subplot(1, 2, 2)
+    # fig1, ax = plt.subplots()
+    # plt.ylim(0, 1)
+    # plt.gca().invert_xaxis()
+    plt.xlabel('Software Composition Index', fontsize=16)
+    plt.yscale("symlog")
+    # ax.set(yscale="symlog")
     sns.distplot(dataset)
-    plt.xlabel('Dependency index', fontsize=16)
-    plt.ylabel('Share of crates', fontsize=16)
+    # sns.distplot([i for i in dataset if i > 0])
+
     plt.savefig("graphs/dep.png")
     plt.close()
 
@@ -136,10 +145,10 @@ def graph_differences(conn):
     for row in rows:
         call_graph_leanness = 0
         public_leanness = 0
-        if row[2] > 0 and row[3] > 0:
+        if row[2] > 0 and row[3] > 0 and row[4] > 0 and row[5] > 0:
             call_graph_leanness = row[3] / row[2]
             dataset_cg_lean.append(call_graph_leanness)
-        if row[4] > 0 and row[5] > 0:
+        # if row[4] > 0 and row[5] > 0:
             public_leanness = row[5] / row[4]
             dataset_lean.append(public_leanness)
 
@@ -182,13 +191,31 @@ def graph_differences(conn):
     plt.savefig("graphs/diff_abs.png")
     plt.close()
 
-
+    plt.figure(num=None, figsize=(12, 6), dpi=80)
+    plt.subplot(1, 2, 1)
+    plt.ylim(0, 7)
     sns.distplot(dataset_lean, label='Public apis only')
-    sns.distplot(dataset_cg_lean, label='Callgraph based')
-    plt.xlabel('Leanness index', fontsize=16)
+    plt.xlabel('Public apis', fontsize=16)
     plt.ylabel('Share of crates', fontsize=16)
-    plt.legend(loc="upper right")
+    plt.subplot(1, 2, 2)
+    plt.ylim(0, 7)
+    sns.distplot(dataset_cg_lean, label='Callgraph based')
+    plt.xlabel('Callgraph', fontsize=16)
+    # plt.ylabel('Share of crates', fontsize=16)
+    # plt.legend(loc="upper right")
     plt.savefig("graphs/lean_comp.png")
+    plt.close()
+
+    box_set = pd.DataFrame({
+        "Public Apis": dataset_lean,
+        "Callgraph": dataset_cg_lean
+    })
+    
+    plt.figure(num=None, figsize=(10, 6), dpi=80)
+    sns.boxplot(data=box_set, orient='v')
+    plt.xlabel('Leanness Approach', fontsize=16)
+    plt.ylabel('Share of crates', fontsize=16)
+    plt.savefig("graphs/lean_comp_box.png")
     plt.close()
 
 def new_util_index(conn):
@@ -201,6 +228,7 @@ def new_util_index(conn):
 
     rows = cur.fetchall()
     deps = {}
+    dataset = []
     for row in rows:
         deps[row[0]] = {
             "name": row[1],
@@ -219,15 +247,31 @@ def new_util_index(conn):
         sql3.execute(f"SELECT \
             count(*) \
             FROM dep_func_metrics \
-            where dep_id = {key} and use_count>0")        
-        used_funcs = sql2.fetchall()
+            where dep_id = {key} and use_count>0")
+        used_funcs = sql3.fetchall()
 
-        deps[key]["unused"] = zeroUseFuncs
-        deps[key]["used"] = used_funcs
-        print(f"Dep {deps[key]['name']} has {zeroUseFuncs} unused funcs")
+        deps[key]["unused"] = zeroUseFuncs[0][0]
+        if len(used_funcs) > 0:
+            deps[key]["used"] = used_funcs[0][0]
+        else:
+            deps[key]["used"] = 0
 
-    with open('data.json', 'w') as outfile:
-        json.dump(deps, outfile)
+        total_funcs = deps[key]["used"] + deps[key]["unused"]
+        if total_funcs > 0 and deps[key]["used"] > 0:
+            dataset.append(deps[key]["used"] / total_funcs)
+
+
+    lessthan10 = len([i for i in dataset if i < 0.10])
+    print(f"Utilization less than 10% -  {lessthan10 / len(dataset)}")
+    a = np.array(dataset)
+    print(f"95th percentile of utilization index  - {np.percentile(a, 95)}")
+
+    plt.figure(num=None, figsize=(10, 6), dpi=80)
+    sns.distplot(dataset)
+    plt.xlabel('Utilization index', fontsize=16)
+    plt.ylabel('Share of crates', fontsize=16)
+    plt.savefig("graphs/new_util.png")
+    plt.close()
 
 
 def graph_utilization_index(conn):
@@ -306,10 +350,10 @@ def graph_leanness_loc(conn):
     for row in rows:
         nodes = 0
         loc = 0
-        if row[2] > 0 and row[3] > 0:
+        if row[2] > 0 and row[3] > 0 and row[4] > 0 and row[5] > 0:
             nodes = row[3] / row[2]
             dataset_node.append(nodes)
-        if row[4] > 0 and row[5] > 0:
+        # if :
             loc = row[5] / row[4]
             dataset_LOC.append(loc)
 
@@ -352,16 +396,38 @@ def graph_leanness_loc(conn):
     mn = mean(dataset_LOC)
     st = std(dataset_LOC)
     print(f"LOC Lean median {md}")
+    print(f"Node Lean median {median(dataset_node)}")
     print(f"LOC Lean mean {mn}")
+    print(f"Node Lean mean {mean(dataset_node)}")
     print(f"LOC Lean std {st}")
 
+    plt.figure(num=None, figsize=(12, 6), dpi=80)
+    plt.subplot(1, 2, 1)
+    plt.ylim(0, 10)
     sns.distplot(dataset_node, label='Leanness nodes')
-    sns.distplot(dataset_LOC, label='Leanness LOC')
-    plt.xlabel('Leanness index', fontsize=16)
+    plt.xlabel('Node count', fontsize=16)
     plt.ylabel('Share of crates', fontsize=16)
-    plt.legend(loc="upper right")
+    plt.subplot(1, 2, 2)
+    plt.ylim(0, 10)
+    sns.distplot(dataset_LOC, label='Leanness LOC')
+    plt.xlabel('Lines of code', fontsize=16)
+    # plt.ylabel('Share of crates', fontsize=16)
+    # plt.legend(loc="upper right")
     plt.savefig("graphs/loc_comp.png")
     plt.close()
+
+    box_set = pd.DataFrame({
+        "Node count": dataset_node,
+        "Lines of code": dataset_LOC
+    })
+    
+    plt.figure(num=None, figsize=(10, 6), dpi=80)
+    sns.boxplot(data=box_set, orient='v')
+    plt.xlabel('Leanness method', fontsize=16)
+    plt.ylabel('Share of crates', fontsize=16)
+    plt.savefig("graphs/loc_comp_box.png")
+    plt.close()
+
 
 def get_single_package_data(conn, name, version):
     cur = conn.cursor()
@@ -378,7 +444,7 @@ def get_single_package_data(conn, name, version):
         total_LOC, \
         local_LOC, \
         total_dep_LOC, \
-        used_dep_LOC \
+        used_dep_LOC, \
         total_public_LOC, \
         used_public_LOC, \
         id \
@@ -386,6 +452,7 @@ def get_single_package_data(conn, name, version):
         WHERE crate_name = '{name}' AND crate_version = '{version}'")
 
     rows = cur.fetchall()
+    print(rows)
     crate_info = rows[0]
     # for row in rows:
     #     print(row)
@@ -409,7 +476,7 @@ def get_single_package_data(conn, name, version):
         total_LOC, \
         used_LOC \
         FROM dep_metrics \
-        WHERE crate_id = {crate_info[14]}")
+        WHERE crate_id = {crate_info[15]}")
 
     rows = cur.fetchall()
 
@@ -442,15 +509,15 @@ def main():
     # create a database connection
     conn = create_connection(database)
     with conn:
-        # get_single_package_data(conn, "pango", "0.8.0")
+        get_single_package_data(conn, "pango", "0.8.0")
         # get_single_package_data(conn, "rand", "0.7.3")
         # get_single_package_data(conn, "serde", "1.0.104")
         # graph_dependency(conn)
         # graph_leanness(conn)
         # graph_differences(conn)
-        # graph_utilization_index(conn)
+        # # graph_utilization_index(conn)
         # graph_leanness_loc(conn)
-        new_util_index(conn)
+        # new_util_index(conn)
 
         # cur = conn.cursor()
         # cur.execute(f"PRAGMA index_list(dep_func_metrics);")
