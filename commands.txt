@@ -1,0 +1,4 @@
+docker build -t crate_analyzer:latest .
+docker save -o image.tar crate_analyzer:latest
+scp -rp /home/algirdas/git/crate_analyzer/image.tar  munich:/home/algirdas/crate_analyzer/image.tar
+scp monster:/data/praezi_algirdas/data/prazi.db ~/prazi.db
