@@ -23,6 +23,8 @@ fn main() {
     let mut counter = 0;
     let data_path = "/data/praezi/batch/data/";
     let updated_data_path = "/data/praezi_algirdas/datasets/";
+    // let data_path = "/home/algirdas/crate_data/";
+    // let updated_data_path = "/home/algirdas/crate_data2/";
     println!("Processing data in {}", data_path);
     let total_paths = fs::read_dir(data_path).unwrap().count();
     let paths = fs::read_dir(data_path).unwrap();
@@ -51,6 +53,9 @@ fn main() {
                 if !highest_ver_str.is_empty() {
                     let crate_name = pather.path().file_name().unwrap().to_string_lossy().to_string();
                     highest_update_path = highest_update_path.join(updated_data_path).join(&crate_name).join(&highest_ver_str);
+
+                    println!("Processing {} - {}", &crate_name, &highest_version);
+                    
                     match get_index(&highest_path, &highest_update_path, &crate_name, &highest_ver_str){
                         // Err(ref e) if e. == std::io::ErrorKind::NotFound => {
                             

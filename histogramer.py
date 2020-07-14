@@ -427,7 +427,7 @@ def main():
     # create a database connection
     conn = create_connection(database)
     with conn:
-        # get_single_package_data(conn, "pango", "0.8.0")
+        get_single_package_data(conn, "pango", "0.8.0")
         # get_single_package_data(conn, "rand", "0.7.3")
         # get_single_package_data(conn, "serde", "1.0.104")
         # graph_dependency(conn)

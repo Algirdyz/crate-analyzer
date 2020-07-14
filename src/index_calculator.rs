@@ -65,7 +65,8 @@ pub struct Metrics {
     pub TotalDepPublicLOC: usize,
     pub UsedDepPublicLOC: usize,
     pub used_funcs: Vec<(String, String, Vec<String>)>,
-    pub unused_funcs: Vec<(String, String, Vec<String>)>
+    pub unused_funcs: Vec<(String, String, Vec<String>)>,
+    pub depMetrics: Vec<DepMetric>
 }
 
 // #[derive(Deserialize, Serialize, Clone)]
@@ -80,29 +81,30 @@ pub fn get_index(callgraph_directory: &PathBuf, update_callgraph_directory: &Pat
 
     let callgraph_path = update_with_python(callgraph_directory, update_callgraph_directory)?;    
     let graph = analyze_graph_for_package(&callgraph_path, crate_name)?;
-
+    let a = graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string())).count();
     let mut output = Metrics{
         TotalFuncCount: graph.iter().count(),
         LocalFuncCount: graph.iter().filter(|n| n.node_type == Some("local_func".to_string())).count(),
         StdFuncCount: graph.iter().filter(|n| n.package_name == None).count(),
-        TotalDepFuncCount: graph.iter().filter(|n| n.package_name != None && &n.crate_name != crate_name).count(),
+        TotalDepFuncCount: graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string())).count(),
         UsedDepFuncCount: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string())).count(),
-        TotalDepPublicFuncCount: graph.iter().filter(|n| n.package_name != None && &n.crate_name != crate_name && n.is_externally_visible).count(),
+        TotalDepPublicFuncCount: graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string()) && n.is_externally_visible).count(),
         UsedDepPublicFuncCount: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string()) && n.is_externally_visible).count(),
-        TotalDepLOC: graph.iter().filter(|n| n.package_name != None && &n.crate_name != crate_name).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
+        TotalDepLOC: graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         UsedDepLOC: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         TotalLOC: graph.iter().map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         LocalLOC: graph.iter().filter(|n| n.node_type == Some("local_func".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         TotalStdLOC: graph.iter().filter(|n| n.package_name == None).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
-        TotalDepPublicLOC: graph.iter().filter(|n| n.package_name != None && &n.crate_name != crate_name && n.is_externally_visible).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
+        TotalDepPublicLOC: graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string()) && n.is_externally_visible).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         UsedDepPublicLOC: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string()) && n.is_externally_visible).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         used_funcs: Vec::new(),
-        unused_funcs: Vec::new()
+        unused_funcs: Vec::new(),
+        depMetrics: Vec::new()
     };
     // let total_count = graph.iter().count();
     // let total_non_std = graph.iter().filter(|n| n.package_name != None).count();
     // let non_used_count = graph.iter().filter(|n| n.package_name != None && n.node_type == None).count();
-    // let total_dep_func_count = graph.iter().filter(|n| n.package_name != None && &n.crate_name != crate_name).count();
+    // let total_dep_func_count = graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string())).count();
     // let local_count = graph.iter().filter(|n| n.node_type == Some("local_func".to_string())).count();
     // let used_dep_count = graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string())).count();
     // println!("Total func count     = {}", total_non_std);
@@ -112,11 +114,10 @@ pub fn get_index(callgraph_directory: &PathBuf, update_callgraph_directory: &Pat
     // println!("Unused dep funcs     = {}", non_used_count);
     // println!("Own code share       = {}", local_count as f32 / total_non_std as f32);
     // println!("Leanness index (n)   = {}", used_dep_count as f32 / total_dep_func_count as f32);
-    // let total_dep_func_count_lines: isize = graph.iter().filter(|n| n.package_name != None && &n.crate_name != crate_name).map(|n| n.num_lines).sum();
+    // let total_dep_func_count_lines: isize = graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string())).map(|n| n.num_lines).sum();
     // let used_dep_count_lines: isize = graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string())).map(|n| n.num_lines).sum();
     // println!("Leanness index (l)   = {}", used_dep_count_lines as f32 / total_dep_func_count_lines as f32);
     // println!("Dependency index     = {}", total_dep_func_count as f32 / total_count as f32);
-
 
     for n in deps{
         let tr_deps = get_all_deps(&callgraph_directory, &n.0, Version::parse(&n.1).unwrap())?;
@@ -127,27 +128,26 @@ pub fn get_index(callgraph_directory: &PathBuf, update_callgraph_directory: &Pat
             .map(|n| n.relative_def_id.to_string()).collect();
         let unused_nodes: Vec<String> = dep_graph.iter()
             .filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string()) && n.node_type != Some("local_func_pub".to_string()) && n.node_type != Some("used_dep_func_pub".to_string()))
-            .map(|n| n.relative_def_id.to_string()).collect();
-        
-        // let total = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).count();
-        // let total_used = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).count();
-        // let total_loc = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
-        // let used_loc = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
-        
-        output.used_funcs.push((n.0.to_string(), n.1.to_string(), used_nodes));
-        output.unused_funcs.push((n.0, n.1, unused_nodes));
+            .map(|n| n.relative_def_id.to_string()).collect();   
 
-        // output.depMetrics.push(
-        //     DepMetric{
-        //         crate_name: (&n.0).to_string(),
-        //         crate_version: (&n.1).to_string(),
-        //         totalCount: total,
-        //         usedCount: total_used,
-        //         total_loc: total_loc,
-        //         used_loc: used_loc
-        //     }
-        // )
-        // println!("{}  = {}/{}", &n.0, total_used, total);
+        let total = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).count();
+        let total_used = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).count();
+        let total_loc = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
+        let used_loc = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
+    
+        output.used_funcs.push((n.0.to_string(), n.1.to_string(), used_nodes));
+        output.unused_funcs.push((n.0.to_string(), n.1.to_string(), unused_nodes));
+
+        output.depMetrics.push(
+            DepMetric{
+                crate_name: (&n.0).to_string(),
+                crate_version: (&n.1).to_string(),
+                totalCount: total,
+                usedCount: total_used,
+                total_loc: total_loc,
+                used_loc: used_loc
+            }
+        )
     }
 
     Ok(output)
@@ -158,8 +158,8 @@ fn analyze_graph_for_package(callgraph_path: &PathBuf, crate_name: &String) -> R
     let mut node_index: usize = 0;
     while dep_graph.len() > node_index{
         let node = dep_graph.get(node_index).unwrap();
-
-        if &node.crate_name == crate_name{
+        
+        if &node.package_name == &Some(crate_name.to_string()){
             traverse_node_downwards(&mut dep_graph, node_index.clone(), crate_name, false);
         }
 
@@ -177,10 +177,9 @@ fn analyze_graph_for_package2(callgraph_path: &PathBuf, crate_name: &String, mai
     while dep_graph.len() > node_index{
         let node = dep_graph.get(node_index).unwrap();
         let mut called = false;
-
-        if &node.crate_name == crate_name && node.is_externally_visible{
+        if &node.package_name == &Some(crate_name.to_string()){
             for e in &node.inward_edges{
-                if main_package == &dep_graph.get(e.target).unwrap().crate_name{
+                if &Some(main_package.to_string()) == &dep_graph.get(e.target).unwrap().package_name{
                     called = true;
                     break;
                 }
@@ -198,7 +197,7 @@ fn analyze_graph_for_package2(callgraph_path: &PathBuf, crate_name: &String, mai
     for mut d in &mut dep_graph{
         if d.node_type == None{
             for dep in deps{
-                if &d.crate_name == &dep.0 && d.package_version == Some(dep.1.to_string()){
+                if &d.package_name == &Some((&dep.0).to_string()) && d.package_version == Some(dep.1.to_string()){
                     d.node_type = Some("local_func".to_string());
                 }
             }
@@ -229,7 +228,10 @@ fn traverse_node_downwards(graph: &mut Vec<Node>, node_index: usize, package_nam
                     next_level_indexes.push(edge.target.clone());
                 }
             }
-            if &current_node.crate_name == package_name{
+
+            if &current_node.package_name == &Some(package_name.to_string()){
+                if &current_node.relative_def_id == &"pango_sys[3ddd]::[0]::pango_coverage_copy[0]".to_string(){
+                }
                 current_node.node_type = Some("local_func_pub".to_string());
             }else if current_node.package_name == None{
                 current_node.node_type = Some("std_func".to_string());
@@ -239,7 +241,7 @@ fn traverse_node_downwards(graph: &mut Vec<Node>, node_index: usize, package_nam
         }else{
             match current_node.node_type {
                 None => {
-                    if &current_node.crate_name == package_name{
+                    if &current_node.package_name == &Some(package_name.to_string()){
                         current_node.node_type = Some("local_func".to_string());
                     }else if current_node.package_name == None{
                         current_node.node_type = Some("std_func".to_string());

@@ -2,3 +2,4 @@ target
 *.db
 *.tar
 graphs
+*.db-journal

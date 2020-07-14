@@ -97,6 +97,27 @@ impl SqliteHandler{
         ).unwrap();
 
         conn.execute(
+            "CREATE TABLE IF NOT EXISTS dep_func_metrics (
+                func TEXT NOT NULL,
+                use_count INT NOT NULL,
+                dep_id INT NOT NULL,
+                FOREIGN KEY(dep_id) REFERENCES dep(id),
+                UNIQUE(func, dep_id)
+            );",
+            NO_PARAMS,
+        ).unwrap();
+
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS unique_dfm 
+            ON dep_func_metrics (func, dep_id);"
+        , NO_PARAMS).unwrap();
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS dfm_query 
+            ON dep_func_metrics (dep_id, use_count);"
+        , NO_PARAMS).unwrap();
+
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS metric_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name VARCHAR(100) NOT NULL,
@@ -158,6 +179,44 @@ impl SqliteHandler{
         }
     }
 
+    pub fn get_existing_funcs(&self, id: &i64) -> Vec<String>{
+        let sql = "SELECT func FROM dep_func_metrics WHERE dep_id = ?1";
+        let mut stmt = self.conn.prepare(sql).unwrap(); 
+        let res = stmt.query_map( 
+            params![
+                id
+            ], |row| {
+                Ok(row.get(0).unwrap())
+        });
+        
+        match res {
+            Err(_why) => return Vec::new(),
+            Ok(val) => return val.map(|x| x.unwrap()).collect()
+        }
+    }
+
+    pub fn bulk_insert_funcs(&self, id: &i64, funcs: &Vec<String>){
+
+    }
+
+    pub fn begin_transaction(&self){
+        match self.conn.execute("BEGIN TRANSACTION", NO_PARAMS){
+            Err(why) => {
+                println!("{:?}", why);
+            },
+            Ok(_) => ()
+        }
+    }
+
+    pub fn end_transaction(&self){
+        match self.conn.execute("COMMIT", NO_PARAMS){
+            Err(why) => {
+                println!("{:?}", why);
+            },
+            Ok(_) => ()
+        }
+    }
+    
     pub fn update_or_insert_func(&self, id: &i64, func_name: &String){
         let result = self.conn.execute(
             "UPDATE dep_func_metrics 
@@ -180,8 +239,7 @@ impl SqliteHandler{
                             func, 
                             use_count)
                             VALUES(?1, ?2, 1)",
-                        params![id,
-                            func_name]
+                        params![id, func_name]
                     );
                     match result {
                         Err(why) => println!("{:?}", why),
@@ -250,18 +308,42 @@ impl SqliteHandler{
             Err(why) => println!("{:?}", why),
             Ok(_) => {
                 let id = self.conn.last_insert_rowid();
+                for dep_metric in &metrics.depMetrics{
+                    let res = self.conn.execute(
+                        "INSERT INTO dep_metrics (name, version, total_count, used_count, total_LOC, used_LOC, crate_id) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                        params![&dep_metric.crate_name,
+                            dep_metric.crate_version,
+                            dep_metric.totalCount as u32,
+                            dep_metric.usedCount as u32,
+                            dep_metric.total_loc as u32,
+                            dep_metric.used_loc as u32,
+                            id]
+                    );
+                    match res {
+                        Err(why) => {
+                            println!("{:?}", why);
+                        },
+                        Ok(_) => ()
+                    }
+                }
+
+                self.begin_transaction();
+
                 for funcs in &metrics.used_funcs{
                     let dep_id = self.get_dep_id(&funcs.0, &funcs.1);
                     for func in &funcs.2{
-                        self.update_or_insert_func(&dep_id, func)
+                        self.update_or_insert_func(&dep_id, func);
                     }
                 }
+                self.end_transaction();
+                self.begin_transaction();
                 for funcs in &metrics.unused_funcs{
                     let dep_id = self.get_dep_id(&funcs.0, &funcs.1);
                     for func in &funcs.2{
                         self.insert_unused_func(&dep_id, func)
                     }
                 }
+                self.end_transaction();
             }
         }
     }
