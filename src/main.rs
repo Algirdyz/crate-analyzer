@@ -21,10 +21,10 @@ fn main() {
     let db_handler = SqliteHandler::new(database_path);
 
     let mut counter = 0;
-    let data_path = "/data/praezi/batch/data/";
-    let updated_data_path = "/data/praezi_algirdas/datasets/";
-    // let data_path = "/home/algirdas/crate_data/";
-    // let updated_data_path = "/home/algirdas/crate_data2/";
+    // let data_path = "/data/praezi/batch/data/";
+    // let updated_data_path = "/data/praezi_algirdas/datasets/";
+    let data_path = "/home/algirdas/crate_data/";
+    let updated_data_path = "/home/algirdas/crate_data2/";
     println!("Processing data in {}", data_path);
     let total_paths = fs::read_dir(data_path).unwrap().count();
     let paths = fs::read_dir(data_path).unwrap();

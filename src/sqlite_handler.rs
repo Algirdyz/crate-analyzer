@@ -57,7 +57,13 @@ impl SqliteHandler{
                 used_dep_LOC INT,
                 total_std_LOC INT,
                 total_public_LOC INT,
-                used_public_LOC INT
+                used_public_LOC INT,
+                total_func_count_with_LOC INT,
+                local_func_count_with_LOC INT,
+                total_dep_func_count_with_LOC INT,
+                used_dep_func_count_with_LOC INT,
+                total_dep_public_func_count_with_LOC INT,
+                used_dep_public_func_count_with_LOC INT
             )",
             NO_PARAMS,
         ).unwrap();
@@ -71,6 +77,8 @@ impl SqliteHandler{
                 total_LOC INT NOT NULL,
                 used_LOC INT NOT NULL,
                 crate_id INT NOT NULL,
+                total_count_with_LOC INT NOT NULL,
+                used_count_with_LOC INT NOT NULL,
                 FOREIGN KEY(crate_id) REFERENCES metrics(id)
             )",
             NO_PARAMS,
@@ -90,17 +98,7 @@ impl SqliteHandler{
                 func TEXT NOT NULL,
                 use_count INT NOT NULL,
                 dep_id INT NOT NULL,
-                FOREIGN KEY(dep_id) REFERENCES dep(id),
-                UNIQUE(func, dep_id)
-            );",
-            NO_PARAMS,
-        ).unwrap();
-
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS dep_func_metrics (
-                func TEXT NOT NULL,
-                use_count INT NOT NULL,
-                dep_id INT NOT NULL,
+                has_LOC INT NOT NULL,
                 FOREIGN KEY(dep_id) REFERENCES dep(id),
                 UNIQUE(func, dep_id)
             );",
@@ -163,15 +161,17 @@ impl SqliteHandler{
         }
     }
 
-    pub fn insert_unused_func(&self, id: &i64, func_name: &String){
+    pub fn insert_unused_func(&self, id: &i64, func_name: &String, has_LOC: bool){
         let result = self.conn.execute(
             "INSERT INTO dep_func_metrics (
                 dep_id, 
                 func, 
-                use_count)
-                VALUES(?1, ?2, 0)",
+                use_count,
+                has_LOC)
+                VALUES(?1, ?2, 0, ?3)",
             params![id,
-                func_name]
+                func_name,
+                has_LOC]
         );
         match result {
             Err(_why) => return,
@@ -217,7 +217,7 @@ impl SqliteHandler{
         }
     }
     
-    pub fn update_or_insert_func(&self, id: &i64, func_name: &String){
+    pub fn update_or_insert_func(&self, id: &i64, func_name: &String, has_LOC: bool){
         let result = self.conn.execute(
             "UPDATE dep_func_metrics 
             SET 
@@ -237,9 +237,10 @@ impl SqliteHandler{
                         "INSERT INTO dep_func_metrics (
                             dep_id, 
                             func, 
-                            use_count)
-                            VALUES(?1, ?2, 1)",
-                        params![id, func_name]
+                            use_count,
+                            has_LOC)
+                            VALUES(?1, ?2, 1, ?3)",
+                        params![id, func_name, has_LOC]
                     );
                     match result {
                         Err(why) => println!("{:?}", why),
@@ -285,8 +286,14 @@ impl SqliteHandler{
                 used_dep_LOC,
                 total_std_LOC,
                 total_public_LOC,
-                used_public_LOC) 
-                VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                used_public_LOC,            
+                total_func_count_with_LOC,
+                local_func_count_with_LOC,
+                total_dep_func_count_with_LOC,
+                used_dep_func_count_with_LOC,
+                total_dep_public_func_count_with_LOC,
+                used_dep_public_func_count_with_LOC) 
+                VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
             params![crate_name,
                 crate_version,
                 metrics.TotalFuncCount as u32,
@@ -302,7 +309,13 @@ impl SqliteHandler{
                 metrics.UsedDepLOC as u32,
                 metrics.TotalStdLOC as u32,
                 metrics.TotalDepPublicLOC as u32,
-                metrics.UsedDepPublicLOC as u32]
+                metrics.UsedDepPublicLOC as u32,
+                metrics.total_func_count_with_LOC as u32,
+                metrics.local_func_count_with_LOC as u32,
+                metrics.total_dep_func_count_with_LOC as u32,
+                metrics.used_dep_func_count_with_LOC as u32,
+                metrics.total_dep_public_func_count_with_LOC as u32,
+                metrics.used_dep_public_func_count_with_LOC as u32]
         );
         match result {
             Err(why) => println!("{:?}", why),
@@ -310,14 +323,16 @@ impl SqliteHandler{
                 let id = self.conn.last_insert_rowid();
                 for dep_metric in &metrics.depMetrics{
                     let res = self.conn.execute(
-                        "INSERT INTO dep_metrics (name, version, total_count, used_count, total_LOC, used_LOC, crate_id) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                        "INSERT INTO dep_metrics (name, version, total_count, used_count, total_LOC, used_LOC, crate_id, total_count_with_LOC, used_count_with_LOC) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                         params![&dep_metric.crate_name,
                             dep_metric.crate_version,
                             dep_metric.totalCount as u32,
                             dep_metric.usedCount as u32,
                             dep_metric.total_loc as u32,
                             dep_metric.used_loc as u32,
-                            id]
+                            id,
+                            dep_metric.total_count_with_LOC as u32,
+                            dep_metric.used_count_with_LOC as u32]
                     );
                     match res {
                         Err(why) => {
@@ -332,7 +347,7 @@ impl SqliteHandler{
                 for funcs in &metrics.used_funcs{
                     let dep_id = self.get_dep_id(&funcs.0, &funcs.1);
                     for func in &funcs.2{
-                        self.update_or_insert_func(&dep_id, func);
+                        self.update_or_insert_func(&dep_id, &func.0, func.1);
                     }
                 }
                 self.end_transaction();
@@ -340,7 +355,7 @@ impl SqliteHandler{
                 for funcs in &metrics.unused_funcs{
                     let dep_id = self.get_dep_id(&funcs.0, &funcs.1);
                     for func in &funcs.2{
-                        self.insert_unused_func(&dep_id, func)
+                        self.insert_unused_func(&dep_id, &func.0, func.1)
                     }
                 }
                 self.end_transaction();

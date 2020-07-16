@@ -46,7 +46,9 @@ pub struct DepMetric {
     pub usedCount: usize,
     pub totalCount: usize,
     pub total_loc: usize,
-    pub used_loc: usize
+    pub used_loc: usize,
+    pub total_count_with_LOC: usize,
+    pub used_count_with_LOC: usize
 }
 
 pub struct Metrics {
@@ -64,8 +66,14 @@ pub struct Metrics {
     pub TotalStdLOC: usize,
     pub TotalDepPublicLOC: usize,
     pub UsedDepPublicLOC: usize,
-    pub used_funcs: Vec<(String, String, Vec<String>)>,
-    pub unused_funcs: Vec<(String, String, Vec<String>)>,
+    pub total_func_count_with_LOC: usize,
+    pub total_dep_func_count_with_LOC: usize,
+    pub local_func_count_with_LOC: usize,
+    pub used_dep_func_count_with_LOC: usize,
+    pub total_dep_public_func_count_with_LOC: usize,
+    pub used_dep_public_func_count_with_LOC: usize,
+    pub used_funcs: Vec<(String, String, Vec<(String, bool)>)>,
+    pub unused_funcs: Vec<(String, String, Vec<(String, bool)>)>,
     pub depMetrics: Vec<DepMetric>
 }
 
@@ -84,12 +92,25 @@ pub fn get_index(callgraph_directory: &PathBuf, update_callgraph_directory: &Pat
     let a = graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string())).count();
     let mut output = Metrics{
         TotalFuncCount: graph.iter().count(),
+        total_func_count_with_LOC: graph.iter().filter(|n| n.num_lines > 0).count(),
+
         LocalFuncCount: graph.iter().filter(|n| n.node_type == Some("local_func".to_string())).count(),
+        local_func_count_with_LOC: graph.iter().filter(|n| n.node_type == Some("local_func".to_string()) && n.num_lines > 0).count(),
+
         StdFuncCount: graph.iter().filter(|n| n.package_name == None).count(),
+
         TotalDepFuncCount: graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string())).count(),
+        total_dep_func_count_with_LOC: graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string()) && n.num_lines > 0).count(),
+
         UsedDepFuncCount: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string())).count(),
+        used_dep_func_count_with_LOC: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string()) && n.num_lines > 0).count(),
+
         TotalDepPublicFuncCount: graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string()) && n.is_externally_visible).count(),
+        total_dep_public_func_count_with_LOC: graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string()) && n.is_externally_visible && n.num_lines > 0).count(),
+        
         UsedDepPublicFuncCount: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string()) && n.is_externally_visible).count(),
+        used_dep_public_func_count_with_LOC: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string()) && n.is_externally_visible && n.num_lines > 0).count(),
+        
         TotalDepLOC: graph.iter().filter(|n| n.package_name != None && &n.package_name != &Some(crate_name.to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         UsedDepLOC: graph.iter().filter(|n| n.package_name != None && n.node_type == Some("used_dep_func".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
         TotalLOC: graph.iter().map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum(),
@@ -123,17 +144,23 @@ pub fn get_index(callgraph_directory: &PathBuf, update_callgraph_directory: &Pat
         let tr_deps = get_all_deps(&callgraph_directory, &n.0, Version::parse(&n.1).unwrap())?;
         let dep_graph = analyze_graph_for_package2(&callgraph_path, &n.0, crate_name, &tr_deps);
 
-        let used_nodes: Vec<String> = dep_graph.iter()
+        let used_nodes: Vec<(String, bool)> = dep_graph.iter()
             .filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string()))
-            .map(|n| n.relative_def_id.to_string()).collect();
-        let unused_nodes: Vec<String> = dep_graph.iter()
+            .map(|n| (n.relative_def_id.to_string(), n.num_lines > 0)).collect();
+        let unused_nodes: Vec<(String, bool)> = dep_graph.iter()
             .filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string()) && n.node_type != Some("local_func_pub".to_string()) && n.node_type != Some("used_dep_func_pub".to_string()))
-            .map(|n| n.relative_def_id.to_string()).collect();   
+            .map(|n| (n.relative_def_id.to_string(), n.num_lines > 0)).collect();   
 
         let total = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).count();
         let total_used = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).count();
-        let total_loc = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
-        let used_loc = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
+        
+        let total_withLOC = dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string()) && n.num_lines > 0).count();
+        let total_used_withLOC = dep_graph.iter().filter(|n| (n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())) && n.num_lines > 0).count();
+        
+        let total_loc =     dep_graph.iter().filter(|n| n.node_type != None && n.node_type != Some("std_func".to_string())).map(|n| if n.num_lines >= 0 { n.num_lines } else { 0 } as usize).sum();
+        let used_loc = dep_graph.iter().filter(|n| n.node_type == Some("local_func_pub".to_string()) || n.node_type == Some("used_dep_func_pub".to_string())).map(|node| {
+            if node.num_lines >= 0 {  return node.num_lines  as usize} else { return 0 as usize} }
+        ).sum();
     
         output.used_funcs.push((n.0.to_string(), n.1.to_string(), used_nodes));
         output.unused_funcs.push((n.0.to_string(), n.1.to_string(), unused_nodes));
@@ -144,6 +171,10 @@ pub fn get_index(callgraph_directory: &PathBuf, update_callgraph_directory: &Pat
                 crate_version: (&n.1).to_string(),
                 totalCount: total,
                 usedCount: total_used,
+
+                total_count_with_LOC: total_withLOC,
+                used_count_with_LOC: total_used_withLOC,
+
                 total_loc: total_loc,
                 used_loc: used_loc
             }
